@@ -1,7 +1,10 @@
 services:
   ollama-proxy:
-    image: alpine/socat
-    command: ["tcp-listen:11434,fork,reuseaddr", "tcp:host.docker.internal:11434"]
+    image: nginx:alpine
+    volumes:
+      - ./ollama-proxy.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - claude-internal
       - host-egress
@@ -26,6 +29,7 @@ services:
     volumes:
       - ${PROJECT_DIR}:/home/claude/workspace
       - ${CLAUDE_STATE_DIR}:/home/claude/.claude
+      - ${CLAUDE_CONFIG_JSON}:/home/claude/.claude.json
       # - /absolute/path/to/shared:/home/claude/shared:ro
     networks:
       - claude-internal

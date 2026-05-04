@@ -67,10 +67,26 @@ else
 fi
 
 PROJECT_ID="${PROJ_BASENAME}-${SHORT_HASH}"
-STATE_DIR="$HOME/.offline-claude/projects/${PROJECT_ID}/.claude"
+PROJECT_ROOT="$HOME/.offline-claude/projects/${PROJECT_ID}"
+STATE_DIR="$PROJECT_ROOT/.claude"
+CONFIG_JSON="$PROJECT_ROOT/.claude.json"
 
 # Create state dir if not exists
 mkdir -p "$STATE_DIR"
+
+# Claude Code reads ~/.claude.json (separate from ~/.claude/). Bind-mount requires the host file to exist.
+if [[ ! -f "$CONFIG_JSON" ]]; then
+  if [[ -d "$STATE_DIR/backups" ]] && compgen -G "$STATE_DIR/backups/.claude.json.backup.*" >/dev/null 2>&1; then
+    LATEST_BACKUP="$(ls -t "$STATE_DIR"/backups/.claude.json.backup.* 2>/dev/null | head -1)"
+    if [[ -n "${LATEST_BACKUP:-}" && -f "$LATEST_BACKUP" ]]; then
+      cp "$LATEST_BACKUP" "$CONFIG_JSON"
+    else
+      printf '%s\n' '{}' >"$CONFIG_JSON"
+    fi
+  else
+    printf '%s\n' '{}' >"$CONFIG_JSON"
+  fi
+fi
 
 # Resolve docker binary before clearing the environment
 DOCKER_BIN="$(command -v docker || true)"
@@ -110,6 +126,7 @@ fi
 echo "[offline-claude] Project: $ABS_PROJECT_DIR"
 echo "[offline-claude] Project ID: $PROJECT_ID"
 echo "[offline-claude] State dir: $STATE_DIR"
+echo "[offline-claude] Config: $CONFIG_JSON"
 echo "[offline-claude] Model: $MODEL"
 
 # Ensure the ollama-proxy service is running in the background so the
@@ -122,6 +139,7 @@ env -i \
   PATH="$DOCKER_RUNTIME_PATH" \
   PROJECT_DIR="$ABS_PROJECT_DIR" \
   CLAUDE_STATE_DIR="$STATE_DIR" \
+  CLAUDE_CONFIG_JSON="$CONFIG_JSON" \
   CLAUDE_MODEL="$MODEL" \
   "$DOCKER_BIN" compose -f "$COMPOSE_FILE" up -d ollama-proxy >/dev/null
 
@@ -132,5 +150,6 @@ env -i \
   PATH="$DOCKER_RUNTIME_PATH" \
   PROJECT_DIR="$ABS_PROJECT_DIR" \
   CLAUDE_STATE_DIR="$STATE_DIR" \
+  CLAUDE_CONFIG_JSON="$CONFIG_JSON" \
   CLAUDE_MODEL="$MODEL" \
   "$DOCKER_BIN" compose -f "$COMPOSE_FILE" run --rm claude-code
