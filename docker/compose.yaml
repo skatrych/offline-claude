@@ -1,0 +1,36 @@
+services:
+  ollama-proxy:
+    image: alpine/socat
+    command: ["tcp-listen:11434,fork,reuseaddr", "tcp:host.docker.internal:11434"]
+    networks:
+      - claude-internal
+      - host-egress
+
+  claude-code:
+    image: offline-claude:local
+    working_dir: /home/claude/workspace
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    environment:
+      ANTHROPIC_BASE_URL: http://ollama-proxy:11434
+      ANTHROPIC_AUTH_TOKEN: ollama
+      CLAUDE_MODEL: ${CLAUDE_MODEL}
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      DISABLE_TELEMETRY: "1"
+      DISABLE_ERROR_REPORTING: "1"
+      DISABLE_FEEDBACK_COMMAND: "1"
+      CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1"
+      DISABLE_GROWTHBOOK: "1"
+      DISABLE_AUTOUPDATER: "1"
+      ENABLE_CLAUDEAI_MCP_SERVERS: "false"
+      CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1"
+    volumes:
+      - ${PROJECT_DIR}:/home/claude/workspace
+      - ${CLAUDE_STATE_DIR}:/home/claude/.claude
+      # - /absolute/path/to/shared:/home/claude/shared:ro
+    networks:
+      - claude-internal
+
+networks:
+  claude-internal:
+    internal: true
+  host-egress: {}

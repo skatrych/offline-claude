@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_MODEL="devstral-small-2:24b"
+MODEL="$DEFAULT_MODEL"
+
+usage() {
+  cat <<EOF
+Usage: $0 [--model <model>] [-m <model>] [--help|-h]
+
+Runs the offline-claude Dockerized CLI for the current project directory.
+
+Options:
+  -m, --model <model>   Specify the Claude model to run (default: ${DEFAULT_MODEL})
+  -h, --help            Show this help and exit
+
+This command determines a per-project persistent state directory under
+~/.offline-claude/projects/<project-id>/.claude and runs the compose
+service with an explicit environment allowlist.
+EOF
+}
+
+# Simple arg parsing
+while [[ ${#} -gt 0 ]]; do
+  case "$1" in
+    -m|--model)
+      if [[ ${2:-} == "" ]]; then
+        echo "Error: $1 requires a value" >&2
+        exit 2
+      fi
+      MODEL="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+fail() {
+  echo "[offline-claude] ERROR: $1" >&2
+  exit 1
+}
+
+# Resolve absolute path of current directory
+if ! ABS_PROJECT_DIR="$(pwd -P 2>/dev/null)"; then
+  fail "Failed to resolve absolute path of current directory"
+fi
+if [[ -z "$ABS_PROJECT_DIR" ]]; then
+  fail "Failed to resolve absolute path of current directory"
+fi
+
+# Generate project id: basename + short hash
+PROJ_BASENAME="$(basename "$ABS_PROJECT_DIR")"
+if command -v sha256sum >/dev/null 2>&1; then
+  SHORT_HASH="$(printf '%s' "$ABS_PROJECT_DIR" | sha256sum | awk '{print $1}' | cut -c1-8)"
+elif command -v shasum >/dev/null 2>&1; then
+  SHORT_HASH="$(printf '%s' "$ABS_PROJECT_DIR" | shasum -a 256 | awk '{print $1}' | cut -c1-8)"
+else
+  fail "No sha256 implementation found (sha256sum or shasum required)"
+fi
+
+PROJECT_ID="${PROJ_BASENAME}-${SHORT_HASH}"
+STATE_DIR="$HOME/.offline-claude/projects/${PROJECT_ID}/.claude"
+
+# Create state dir if not exists
+mkdir -p "$STATE_DIR"
+
+# Resolve docker binary before clearing the environment
+DOCKER_BIN="$(command -v docker || true)"
+if [[ -z "$DOCKER_BIN" ]]; then
+  fail "docker command not found in PATH"
+fi
+
+# Docker on macOS may need HOME (for ~/.docker/config.json) and a minimal PATH
+# so credential helpers like docker-credential-osxkeychain can be executed.
+HOST_HOME="${HOME:?HOME must be set}"
+DOCKER_RUNTIME_PATH="$(dirname "$DOCKER_BIN"):/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+# Verify image exists
+if ! "$DOCKER_BIN" image inspect offline-claude:local >/dev/null 2>&1; then
+  fail "Docker image offline-claude:local not found. Build it by running: bash scripts/build-image.sh"
+fi
+
+# Compose file absolute path (repo-relative docker/compose.yaml)
+# Resolve this script's repo root and the compose file location.
+# Follow symlinks so running the installed ~/bin/offline-claude symlink resolves
+# back into the repository directory instead of the symlink location.
+SOURCE="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  # If $SOURCE was relative, resolve it relative to the symlink dir
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+COMPOSE_FILE="$REPO_ROOT/docker/compose.yaml"
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  fail "Compose file not found: $COMPOSE_FILE"
+fi
+
+# Run docker compose with a strict environment allowlist
+echo "[offline-claude] Project: $ABS_PROJECT_DIR"
+echo "[offline-claude] Project ID: $PROJECT_ID"
+echo "[offline-claude] State dir: $STATE_DIR"
+echo "[offline-claude] Model: $MODEL"
+
+# Ensure the ollama-proxy service is running in the background so the
+# claude-code service can resolve the hostname `ollama-proxy`.
+# We pass only the compose-specific allowlist vars plus the minimal Docker
+# runtime vars HOME/PATH required by the Docker CLI itself on macOS.
+echo "[offline-claude] Ensuring ollama-proxy is running..."
+env -i \
+  HOME="$HOST_HOME" \
+  PATH="$DOCKER_RUNTIME_PATH" \
+  PROJECT_DIR="$ABS_PROJECT_DIR" \
+  CLAUDE_STATE_DIR="$STATE_DIR" \
+  CLAUDE_MODEL="$MODEL" \
+  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" up -d ollama-proxy >/dev/null
+
+# Now run the one-off claude-code service.
+echo "[offline-claude] Running claude-code (one-off)..."
+env -i \
+  HOME="$HOST_HOME" \
+  PATH="$DOCKER_RUNTIME_PATH" \
+  PROJECT_DIR="$ABS_PROJECT_DIR" \
+  CLAUDE_STATE_DIR="$STATE_DIR" \
+  CLAUDE_MODEL="$MODEL" \
+  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" run --rm claude-code
