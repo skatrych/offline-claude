@@ -3,6 +3,7 @@ set -euo pipefail
 
 DEFAULT_MODEL="devstral-small-2:24b"
 MODEL="$DEFAULT_MODEL"
+COMPOSE_PROJECT_NAME="offline-claude"
 
 usage() {
   cat <<EOF
@@ -141,7 +142,7 @@ env -i \
   CLAUDE_STATE_DIR="$STATE_DIR" \
   CLAUDE_CONFIG_JSON="$CONFIG_JSON" \
   CLAUDE_MODEL="$MODEL" \
-  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" up -d ollama-proxy >/dev/null
+  "$DOCKER_BIN" compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d ollama-proxy >/dev/null
 
 # Now run the one-off claude-code service.
 echo "[offline-claude] Running claude-code (one-off)..."
@@ -152,4 +153,4 @@ env -i \
   CLAUDE_STATE_DIR="$STATE_DIR" \
   CLAUDE_CONFIG_JSON="$CONFIG_JSON" \
   CLAUDE_MODEL="$MODEL" \
-  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" run --rm claude-code
+  "$DOCKER_BIN" compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" run --rm claude-code

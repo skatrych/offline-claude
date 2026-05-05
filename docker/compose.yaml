@@ -1,3 +1,5 @@
+name: offline-claude
+
 services:
   ollama-proxy:
     image: nginx:alpine
