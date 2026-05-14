@@ -72,6 +72,8 @@ PROJECT_ROOT="$HOME/.offline-claude/projects/${PROJECT_ID}"
 STATE_DIR="$PROJECT_ROOT/.claude"
 CONFIG_JSON="$PROJECT_ROOT/.claude.json"
 
+OLLAMA_HOST="${OLLAMA_HOST:-host.docker.internal}"
+
 # Create state dir if not exists
 mkdir -p "$STATE_DIR"
 
@@ -129,6 +131,7 @@ echo "[offline-claude] Project ID: $PROJECT_ID"
 echo "[offline-claude] State dir: $STATE_DIR"
 echo "[offline-claude] Config: $CONFIG_JSON"
 echo "[offline-claude] Model: $MODEL"
+echo "[offline-claude] Ollama host: $OLLAMA_HOST"
 
 # Ensure the ollama-proxy service is running in the background so the
 # claude-code service can resolve the hostname `ollama-proxy`.
@@ -142,6 +145,7 @@ env -i \
   CLAUDE_STATE_DIR="$STATE_DIR" \
   CLAUDE_CONFIG_JSON="$CONFIG_JSON" \
   CLAUDE_MODEL="$MODEL" \
+  OLLAMA_HOST="$OLLAMA_HOST" \
   "$DOCKER_BIN" compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up -d ollama-proxy >/dev/null
 
 # Now run the one-off claude-code service.

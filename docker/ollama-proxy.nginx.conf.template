@@ -1,0 +1,24 @@
+# Ollama rejects requests whose Host is not localhost (see ollama/ollama#3269).
+# TCP relay forwarded the client Host (e.g. ollama-proxy:11434), causing 403.
+server {
+    listen 11434;
+    server_name _;
+
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    set $ollama_upstream "${OLLAMA_HOST}:11434";
+
+    location / {
+        proxy_pass http://$ollama_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host localhost:11434;
+        proxy_set_header Connection "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Ollama may 403 on API when Origin is present (see ollama/ollama#6021)
+        proxy_set_header Origin "";
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+    }
+}
