@@ -41,7 +41,7 @@ compose setup that enforces network isolation:
 ## Prerequisites
 
 - **macOS** with Docker (tested with OrbStack; works with Docker Desktop too)
-- **Ollama** running on `127.0.0.1:11434`
+- **Ollama** running on `127.0.0.1:11434` or in your LAN `192.168.x.x:11434`
 - **`~/bin`** exists and is on your `PATH`
 
 ## Quick start
