@@ -1,46 +1,46 @@
-# Image build instructions for offline-claude
+# Building the Docker image
 
-This document describes how to build the offline-claude Docker image used by the project.
+The offline-claude runtime uses a pre-built image. Build it while you have internet
+access — the runtime never builds or installs packages.
 
-Prerequisites
-- Docker installed and running on the host (the build must run while internet is available).
+## Prerequisites
 
-Script: scripts/build-image.sh
+- Docker installed and running
 
-Default version
-- The script defines a hardcoded default Claude Code version: DEFAULT_CLAUDE_VERSION="0.2.29".
-- You can change the default by editing scripts/build-image.sh and updating the DEFAULT_CLAUDE_VERSION value, or by supplying an explicit --claude-version when invoking the script.
+## Build
 
-Usage
-- Build with the hardcoded default version:
+```bash
+# Build with the default Claude Code version (currently 2.1.126):
+bash scripts/build-image.sh
 
-  bash scripts/build-image.sh
+# Build with a specific version:
+bash scripts/build-image.sh --claude-version 2.1.130
+```
 
-- Build with an explicit version:
+## What it does
 
-  bash scripts/build-image.sh --claude-version 0.2.30
+The script installs Claude Code into a `node:22-bookworm-slim` image via npm and
+tags the result with two labels:
 
-Notes on behavior
-- The script always passes the chosen version to docker build via --build-arg CLAUDE_VERSION=<version>. The Dockerfile expects this build arg and will install that exact version of @anthropic-ai/claude-code globally into the image.
+- `offline-claude:<version>` — e.g. `offline-claude:2.1.126`
+- `offline-claude:local` — the stable tag used by the runtime
 
-Resulting image tags
-- After a successful build the image will be tagged with two tags:
-  - offline-claude:<version> (e.g. offline-claude:0.2.29)
-  - offline-claude:local
+The runtime always uses `offline-claude:local`. If it's missing, `offline-claude`
+will exit with a clear message and the exact build command to run.
 
-Runtime and build policy
-- The runtime environment (container execution) never builds or installs packages implicitly. You must run scripts/build-image.sh manually to produce the image before first use.
+## Verifying
 
-Verification
-- After running the build script you can verify the image is present with:
+```bash
+docker images | grep offline-claude
+```
 
-  docker images | grep offline-claude
+## Updating the default version
 
-Files created by the build process
-- docker/ClaudeCode.Dockerfile — the image Dockerfile
-- docker/pre-flight-check.sh — placeholder pre-flight check (exits 0)
-- docker/entrypoint.sh — placeholder entrypoint (prints a message and exits)
-- scripts/build-image.sh — build script described above
+Edit `DEFAULT_CLAUDE_VERSION` in `scripts/build-image.sh` or pass
+`--claude-version` explicitly.
 
-Security note
-- The image bakes a non-root user `claude` with home directory /home/claude. At runtime only /home/claude/.claude may be bind-mounted from the host; do not mount or overwrite the full /home/claude directory from the host.
+## Security notes
+
+- The image creates a non-root user `claude` with home at `/home/claude`
+- Only `/home/claude/.claude` should be bind-mounted from the host — never mount the full `/home/claude`
+- Claude env vars in `docker/compose.yaml` disable all telemetry, feedback, and cloud MCP servers

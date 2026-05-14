@@ -1,49 +1,44 @@
-# Usage: offline-claude
+# Usage reference
 
-This document explains how to install, build, and run offline-claude.
+For a full overview, see the [README](../README.md). This document covers
+implementation details.
 
-Prerequisites
-- OrbStack on macOS (or Docker platform supporting host.docker.internal)
-- Ollama running on the host at 127.0.0.1:11434
-- ~/bin exists and is on your PATH
+## Wrapper behaviour
 
-Install
-1. From the repository root run:
+When you run `offline-claude` the wrapper script does the following:
 
-   bash scripts/install.sh
+1. Resolves the absolute path of the current directory
+2. Derives a `<project-id>` from the basename + short SHA-256 hash
+3. Creates `~/.offline-claude/projects/<project-id>/.claude` if it doesn't exist
+4. Ensures `~/.offline-claude/projects/<project-id>/.claude.json` exists (restores from backup if available)
+5. Verifies the `offline-claude:local` Docker image exists
+6. Starts the `ollama-proxy` service in detached mode
+7. Runs the `claude-code` service as a one-off container
 
-This creates a symlink at ~/bin/offline-claude pointing to the repo script. The script will not create ~/bin for you.
+The environment is stripped down to an explicit allowlist — arbitrary host
+environment variables are **not** forwarded into the container.
 
-Build the image
-1. When online, run:
+## CLI flags
 
-   bash scripts/build-image.sh
+| Flag | Description |
+|---|---|
+| `offline-claude` | Run with default model (`devstral-small-2:24b`) |
+| `--model <name>` / `-m` | Use a specific Ollama model |
+| `--help` / `-h` | Show usage and exit |
+| `OLLAMA_HOST=<host>` | Override the Ollama host for LAN setups |
 
-This builds the image and tags it as offline-claude:<version> and offline-claude:local.
+## Per-project state
 
-Run
-1. In any project directory, run:
+Each directory produces a unique project ID and state directory. Running in
+different directories gives you fully isolated Claude sessions.
 
-   offline-claude
+## Warming up Ollama models
 
-2. Options:
-   - Specify a model: offline-claude --model claude-2
-   - Get help: offline-claude --help
+Ollama loads models on first request. To pre-load a model into VRAM before
+running:
 
-What the wrapper does
-- Resolves the absolute path of the current directory and computes a project ID composed of the directory basename and a short hash of the path.
-- Creates a per-project persistent state directory at ~/.offline-claude/projects/<project-id>/.claude
-- Ensures the required Docker image (offline-claude:local) exists and instructs you to run bash scripts/build-image.sh if missing.
-- Invokes docker compose with a minimal environment allowlist (PROJECT_DIR, CLAUDE_STATE_DIR, CLAUDE_MODEL) to avoid leaking host env vars.
+```bash
+bash scripts/ollama-model-ping.sh
+```
 
-Per-project persistence
-- State is stored under ~/.offline-claude/projects/<project-id>/.claude
-- Running offline-claude in different directories produces different project IDs and isolated state directories.
-
-Read-only shared mounts
-- If you want to add manual read-only shared mounts, edit docker/compose.yaml and uncomment or add a bind mount with the :ro option. See the commented example.
-
-Common failures
-- Missing image: You will see an error saying offline-claude:local not found. Fix: bash scripts/build-image.sh
-- Ollama unreachable: Pre-flight checks will fail when starting the container if the Ollama proxy is not reachable. Ensure Ollama is running on the host and the proxy is up.
-- Internet detected: The pre-flight check will abort if external internet (e.g. https://google.com) is reachable. This indicates the isolation guarantees are not being enforced by your runtime topology.
+This sends a minimal chat completion request and discards the output.
